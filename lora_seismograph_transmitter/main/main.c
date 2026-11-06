@@ -48,9 +48,44 @@ static void init_module_pins() {
     gpio_config(&io_conf);
 }
 
+static void module_writeReg(uint8_t addr, uint8_t value) {
+    uint8_t tx_data[2] = {addr & 63, value};
+    spi_transaction_t trans = {
+        .lenght = 2 * 8,
+        .tx_data = tx_data
+    };
+    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &t));
+}
 
+static void module_writeReg_(uint8_t addr, uint8_t* data, size_t len) {
+    size_t sendSize = len + 1;
+    uint8_t* tx_data = malloc(sendSize);
+    tx_data[0] = (addr & 63) + ;
+
+    for (size_t index = 0; index < len; index++) {
+        tx_data[index + 1] = data[index];
+    }
+
+    spi_transaction_t trans = {
+        .lenght = sendSize * 8,
+        .tx_data = tx_data
+    };
+    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &t));
+    free(tx_data);
+}
+
+static void module_strobe(uint8_t addr) {
+    uint8_t tx_data[1] = {addr & 63};
+    spi_transaction_t trans = {
+        .lenght = 8,
+        .tx_data = tx_data
+    };
+    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &t));
+}
 
 void app_main() {
     init_module_spi();
     init_module_pins();
+
+
 }

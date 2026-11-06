@@ -1,4 +1,4 @@
-модуль:
+модуль cc1101:
 1    GND             GND
 2    VCC             3.3V
 3    GDO0 (TX/IRQ)   GPIO 4
