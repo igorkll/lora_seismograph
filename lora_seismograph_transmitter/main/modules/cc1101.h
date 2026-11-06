@@ -129,7 +129,7 @@ static void module_readReg_burst(uint8_t addr, uint8_t* data_out, size_t read_by
     free(rx_data);
 }
 
-void init_module() {
+void module_init() {
     init_module_spi();
     init_module_pins();
 

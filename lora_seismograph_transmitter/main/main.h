@@ -1,5 +1,7 @@
 #pragma once
 
+#include "config.h"
+
 extern const char* TAG;
 
 #include <stdint.h>
