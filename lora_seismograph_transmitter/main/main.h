@@ -14,3 +14,4 @@ extern const char* TAG;
 #include <driver/spi_master.h>
 #include <driver/gpio.h>
 #include <esp_log.h>
+#include <esp_err.h>

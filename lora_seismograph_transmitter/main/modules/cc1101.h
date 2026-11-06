@@ -2,7 +2,8 @@
 #include "cc1101_config.h"
 #include "cc1101_regs.h"
 
-#define MAX_TRANS_SZ 128
+#define MAX_TRANS_SZ 65
+#define MAX_PAYLOAD 63
 #define SPI SPI2_HOST
 
 static spi_device_handle_t spi_handle;
@@ -56,11 +57,7 @@ static void module_writeReg(uint8_t addr, uint8_t value) {
 
 static void module_writeReg_burst(uint8_t addr, uint8_t* data, size_t len) {
     size_t sendSize = len + 1;
-    uint8_t* tx_data = malloc(sendSize);
-    if (!tx_data) {
-        ESP_LOGE(TAG, "module_writeReg_burst: failed to alloc tx_data");
-        return;
-    }
+    uint8_t tx_data[sendSize];
     tx_data[0] = (addr & 63) | BURST_BIT;
 
     for (size_t index = 0; index < len; index++) {
@@ -72,7 +69,6 @@ static void module_writeReg_burst(uint8_t addr, uint8_t* data, size_t len) {
         .tx_buffer = tx_data
     };
     ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &trans));
-    free(tx_data);
 }
 
 static void module_strobe(uint8_t addr) {
@@ -100,18 +96,8 @@ static uint8_t module_readReg(uint8_t addr, bool burstFlag) {
 static void module_readReg_burst(uint8_t addr, uint8_t* data_out, size_t read_bytes) {
     size_t length = read_bytes + 1;
 
-    uint8_t* tx_data = malloc(length);
-    if (!tx_data) {
-        ESP_LOGE(TAG, "module_readReg_burst: failed to alloc tx_data");
-        return;
-    }
-
-    uint8_t* rx_data = malloc(length);
-    if (!rx_data) {
-        free(tx_data);
-        ESP_LOGE(TAG, "module_readReg_burst: failed to alloc rx_data");
-        return;
-    }
+    uint8_t tx_data[length];
+    uint8_t rx_data[length];
 
     tx_data[0] = (addr & 63) | READ_BIT | BURST_BIT;
     memset(tx_data + 1, 0, read_bytes);
@@ -124,9 +110,66 @@ static void module_readReg_burst(uint8_t addr, uint8_t* data_out, size_t read_by
     ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &trans));
 
     memcpy(data_out, rx_data + 1, read_bytes);
+}
 
-    free(tx_data);
-    free(rx_data);
+esp_err_t module_send(const uint8_t *data, size_t len, uint32_t timeout_ms)
+{
+    if (!data || len == 0 || len > MAX_PAYLOAD) {
+        ESP_LOGE(TAG, "module_send: invalid len=%zu", len);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // ---------- 1. Перейти в IDLE и очистить TX FIFO ----------
+    module_strobe(CMD_SIDLE);
+    vTaskDelay(pdMS_TO_TICKS(1));
+
+    module_strobe(CMD_SFTX);
+    vTaskDelay(pdMS_TO_TICKS(1));
+
+    // ---------- 2. Загрузить в FIFO: [длина][данные...] ----------
+    // В режиме переменной длины первый байт FIFO — это длина пакета.
+    uint8_t fifo_buf[1 + MAX_PAYLOAD];
+    fifo_buf[0] = (uint8_t)len;
+    memcpy(&fifo_buf[1], data, len);
+
+    module_writeReg_burst(REG_TXFIFO, fifo_buf, len + 1);
+
+    // ---------- 3. Проверить, что FIFO принял всё и не было underflow ----------
+    // REG_TXBYTES (0x3A) — статусный регистр, читается ТОЛЬКО с burst=1
+    uint8_t txb = module_readReg(REG_TXBYTES, true);
+    if (txb & 0x80) {
+        ESP_LOGE(TAG, "TX FIFO underflow before TX (status=0x%02X)", txb);
+        return ESP_FAIL;
+    }
+    if ((txb & 0x7F) != (len + 1)) {
+        ESP_LOGW(TAG, "TX FIFO mismatch: expected %u, got %u",
+                 (unsigned)(len + 1), (unsigned)(txb & 0x7F));
+    }
+
+    // ---------- 4. Запустить передачу ----------
+    module_strobe(CMD_STX);
+
+    // ---------- 5. Дождаться возврата MARCSTATE в IDLE ----------
+    // REG_MARCSTATE (0x35) — статусный регистр, читается ТОЛЬКО с burst=1
+    TickType_t start   = xTaskGetTickCount();
+    TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
+
+    while ((xTaskGetTickCount() - start) < timeout) {
+        uint8_t marc  = module_readReg(REG_MARCSTATE, true);
+        uint8_t state = marc & 0x1F;
+
+        if (state == 0x01) { // IDLE — передача завершена
+            uint8_t rest = module_readReg(REG_TXBYTES, true) & 0x7F;
+            if (rest == 0) {
+                ESP_LOGI(TAG, "TX done: %zu bytes", len);
+                return ESP_OK;
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+
+    ESP_LOGE(TAG, "module_send: timeout waiting for IDLE");
+    return ESP_ERR_TIMEOUT;
 }
 
 void module_init() {
@@ -134,6 +177,18 @@ void module_init() {
     init_module_pins();
 
     module_strobe(CMD_SRES);
+
+    vTaskDelay(pdMS_TO_TICKS(10));
+    module_writeReg(0x0D, 0x10); // FREQ2
+    module_writeReg(0x0E, 0xB0); // FREQ1
+    module_writeReg(0x0F, 0x71); // FREQ0 (пример для 433 МГц)
+    module_writeReg(0x12, 0x0E); // MDMCFG4 (полоса, скорость)
+    module_writeReg(0x13, 0x3B); // MDMCFG3 (скорость)
+    module_writeReg(0x14, 0x00); // MDMCFG2 (2-FSK, без манчестера)
+    module_writeReg(0x08, 0x05); // PKTCTRL0: переменная длина + CRC
+    module_writeReg(0x06, 0xFF); // PKTLEN: макс. длина (для переменной длины)
+    module_writeReg(0x3E, 0x0F); // PATABLE (~10 dBm на 433 МГц)
+    module_writeReg(0x02, 0x06); // Значение 0x06: GDO0 выдаёт импульс по завершении пакета (EOP) для TX и RX
 
     ESP_LOGI(TAG, "TEST MODULE");
     ESP_LOGI(TAG, "VERSION  : 0x%02X", module_readReg(REG_VERSION, true));
