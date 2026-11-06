@@ -1,13 +1,16 @@
 #include "config.h"
+#include "regs.h"
 
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <driver/spi_master.h>
 #include <driver/gpio.h>
+#include <esp_log.h>
 
 static const char* TAG = "lora_seismograph_transmitter";
 
@@ -110,14 +113,14 @@ static void module_readReg_burst(uint8_t addr, uint8_t* data_out, size_t read_by
 
     uint8_t* tx_data = malloc(length);
     if (!tx_data) {
-        ESP_LOGE(TAG, "module_writeReg_burst: failed to alloc tx_data");
+        ESP_LOGE(TAG, "module_readReg_burst: failed to alloc tx_data");
         return;
     }
 
     uint8_t* rx_data = malloc(length);
     if (!rx_data) {
         free(tx_data);
-        ESP_LOGE(TAG, "module_writeReg_burst: failed to alloc rx_data");
+        ESP_LOGE(TAG, "module_readReg_burst: failed to alloc rx_data");
         return;
     }
 
@@ -137,9 +140,17 @@ static void module_readReg_burst(uint8_t addr, uint8_t* data_out, size_t read_by
     free(rx_data);
 }
 
+static uint8_t module_readReg_burst_byte(uint8_t addr) {
+    uint8_t ret = 0;
+    module_readReg_burst(addr, &ret, 1);
+    return ret;
+}
+
 void app_main() {
     init_module_spi();
     init_module_pins();
 
-
+    ESP_LOGI(TAG, "TEST MODULE");
+    ESP_LOGI(TAG, "VERSION: 0x%02X", module_readReg_burst_byte(REG_VERSION));
+    ESP_LOGI(TAG, "PARTNUM: 0x%02X", module_readReg_burst_byte(REG_PARTNUM));
 }
