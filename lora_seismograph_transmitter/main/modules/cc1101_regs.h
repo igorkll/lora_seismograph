@@ -1,13 +1,23 @@
 #pragma once
 
+
+
 #define REG_VERSION    0x31
 #define REG_PARTNUM    0x30
 #define REG_MARCSTATE  0x35
-#define REG_TXFIFO     0x3F // Адрес TX FIFO
+
 #define REG_TXBYTES    0x3A // Количество байт в TX FIFO
+#define REG_TXFIFO     0x3F // Адрес TX FIFO
+
+#define REG_RXBYTES    0x3B // Количество байт в RX FIFO
+#define REG_RXFIFO     0x3F // Адрес RX FIFO
+
+
+
 
 #define CMD_SRES   0x30 // Сброс
 #define CMD_SIDLE  0x36 // Переход в режим IDLE
 #define CMD_SFTX   0x3B // Очистка TX FIFO
 #define CMD_STX    0x35 // Запуск передачи
 #define CMD_SRX    0x34 // Переход в режим приёма
+#define CMD_SFRX   0x3A // Очистка RX FIFO

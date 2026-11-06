@@ -11,6 +11,12 @@ static spi_device_handle_t spi_handle;
 #define BURST_BIT (1 << 6)
 #define READ_BIT (1 << 7)
 
+static volatile bool recived = false;
+
+static void IRAM_ATTR gdo0_isr_handler(void *arg) {
+    recived = true;
+}
+
 static void init_module_spi() {
     // --------------------------------- spi bus
     spi_bus_config_t buscfg = {
@@ -42,6 +48,7 @@ static void init_module_pins() {
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_NEGEDGE
     };
     gpio_config(&io_conf);
 }
@@ -172,6 +179,59 @@ esp_err_t module_send(const uint8_t *data, size_t len, uint32_t timeout_ms)
     return ESP_ERR_TIMEOUT;
 }
 
+void module_waitRecive() {
+    module_strobe(CMD_SRX);
+}
+
+bool module_isRecived() {
+    return recived;
+}
+
+esp_err_t module_receive(uint8_t* buffer, size_t max_len, size_t *out_len) {
+    // Сбрасываем флаг СРАЗУ, до чтения FIFO — чтобы пакет, пришедший во время
+    // чтения, снова выставил флаг, и мы его не потеряли.
+    recived = false;
+
+    uint8_t n = module_readReg(REG_RXBYTES, true) & 0x7F;
+    if (n == 0) {
+        // EOP сработал, но данных нет (коллизия, CRC fail до FIFO)
+        module_strobe(CMD_SRX);
+        return ESP_FAIL;
+    }
+
+    // В режиме переменной длины первый байт — длина пакета
+    uint8_t pkt_len = 0;
+    module_readReg_burst(REG_RXFIFO, &pkt_len, 1);
+
+    if (pkt_len == 0 || pkt_len > max_len) {
+        ESP_LOGW(TAG, "module_receive: bad len=%u", pkt_len);
+        module_strobe(CMD_SIDLE);
+        module_strobe(CMD_SFRX);
+        module_strobe(CMD_SRX);
+        return ESP_FAIL;
+    }
+
+    // Полезные данные
+    module_readReg_burst(REG_RXFIFO, buffer, pkt_len);
+
+    // Два статусных байта: RSSI и LQI/CRC_OK
+    uint8_t status[2];
+    module_readReg_burst(REG_RXFIFO, status, 2);
+
+    bool    crc_ok = (status[1] & 0x80) != 0;
+    uint8_t lqi    = status[1] & 0x7F;
+    int8_t  rssi   = (int8_t)(status[0] / 2) - 74;
+
+    *out_len = pkt_len;
+
+    ESP_LOGI(TAG, "RX %u bytes RSSI=%d LQI=%u CRC=%s",
+             pkt_len, rssi, lqi, crc_ok ? "OK" : "FAIL");
+
+    // Вернуться в приём для следующего пакета
+    module_strobe(CMD_SRX);
+    return ESP_OK;
+}
+
 void module_init() {
     init_module_spi();
     init_module_pins();
@@ -182,13 +242,21 @@ void module_init() {
     module_writeReg(0x0D, 0x10); // FREQ2
     module_writeReg(0x0E, 0xB0); // FREQ1
     module_writeReg(0x0F, 0x71); // FREQ0 (пример для 433 МГц)
-    module_writeReg(0x12, 0x0E); // MDMCFG4 (полоса, скорость)
-    module_writeReg(0x13, 0x3B); // MDMCFG3 (скорость)
-    module_writeReg(0x14, 0x00); // MDMCFG2 (2-FSK, без манчестера)
+    module_writeReg(0x14, 0x07); // SYNC_MODE=111 (30/32 sync + CS)
     module_writeReg(0x08, 0x05); // PKTCTRL0: переменная длина + CRC
     module_writeReg(0x06, 0xFF); // PKTLEN: макс. длина (для переменной длины)
     module_writeReg(0x3E, 0x0F); // PATABLE (~10 dBm на 433 МГц)
     module_writeReg(0x02, 0x06); // Значение 0x06: GDO0 выдаёт импульс по завершении пакета (EOP) для TX и RX
+    module_writeReg(0x07, 0x0E); // APPEND_STATUS=1 (0x04) + CRC_AUTOFLUSH=1 (0x08) + PQT=2 (0x02)
+
+    module_writeReg(0x12, 0xF5); // MDMCFG4: CHANBW=58 кГц, DRATE_E=5
+    module_writeReg(0x13, 0x83); // MDMCFG3: DRATE_M=131, итоговая скорость ~1.2 кбит/с
+
+    // явно ставлю синхрослово
+    module_writeReg(0x04, 0xD3); // SYNC1
+    module_writeReg(0x05, 0x91); // SYNC0
+
+    gpio_isr_handler_add(GPIO_MODULE_GDO0, gdo0_isr_handler, NULL);
 
     ESP_LOGI(TAG, "TEST MODULE");
     ESP_LOGI(TAG, "VERSION  : 0x%02X", module_readReg(REG_VERSION, true));
