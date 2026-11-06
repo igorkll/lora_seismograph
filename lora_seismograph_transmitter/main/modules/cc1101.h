@@ -246,7 +246,7 @@ void module_init() {
     module_writeReg(0x08, 0x05); // PKTCTRL0: переменная длина + CRC
     module_writeReg(0x06, 0xFF); // PKTLEN: макс. длина (для переменной длины)
     module_writeReg(0x3E, 0x0F); // PATABLE (~10 dBm на 433 МГц)
-    module_writeReg(0x02, 0x06); // Значение 0x06: GDO0 выдаёт импульс по завершении пакета (EOP) для TX и RX
+    module_writeReg(0x02, 0x07); // GDO0 = Packet received with CRC OK
     module_writeReg(0x07, 0x0E); // APPEND_STATUS=1 (0x04) + CRC_AUTOFLUSH=1 (0x08) + PQT=2 (0x02)
 
     module_writeReg(0x12, 0xF5); // MDMCFG4: CHANBW=58 кГц, DRATE_E=5
