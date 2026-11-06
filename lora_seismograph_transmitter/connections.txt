@@ -1,0 +1,9 @@
+модуль:
+1    GND             GND
+2    VCC             3.3V
+3    GDO0 (TX/IRQ)   GPIO 4
+4    CSN (CS)        GPIO 5
+5    SCK             GPIO 6
+6    MOSI            GPIO 7
+7    MISO / GDO1     GPIO 2
+8    GDO2 (RX)       GPIO 3
