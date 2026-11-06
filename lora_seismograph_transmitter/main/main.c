@@ -4,14 +4,20 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <driver/spi_master.h>
 #include <driver/gpio.h>
 
-#define MAX_TRANS_SZ 64
+static const char* TAG = "lora_seismograph_transmitter";
+
+#define MAX_TRANS_SZ 128
 #define SPI SPI2_HOST
 
 static spi_device_handle_t spi_handle;
+
+#define BURST_BIT (1 << 6)
+#define READ_BIT (1 << 7)
 
 static void init_module_spi() {
     // --------------------------------- spi bus
@@ -51,36 +57,84 @@ static void init_module_pins() {
 static void module_writeReg(uint8_t addr, uint8_t value) {
     uint8_t tx_data[2] = {addr & 63, value};
     spi_transaction_t trans = {
-        .lenght = 2 * 8,
-        .tx_data = tx_data
+        .length = 2 * 8,
+        .tx_buffer = tx_data
     };
-    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &t));
+    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &trans));
 }
 
-static void module_writeReg_(uint8_t addr, uint8_t* data, size_t len) {
+static void module_writeReg_burst(uint8_t addr, uint8_t* data, size_t len) {
     size_t sendSize = len + 1;
     uint8_t* tx_data = malloc(sendSize);
-    tx_data[0] = (addr & 63) + ;
+    if (!tx_data) {
+        ESP_LOGE(TAG, "module_writeReg_burst: failed to alloc tx_data");
+        return;
+    }
+    tx_data[0] = (addr & 63) | BURST_BIT;
 
     for (size_t index = 0; index < len; index++) {
         tx_data[index + 1] = data[index];
     }
 
     spi_transaction_t trans = {
-        .lenght = sendSize * 8,
-        .tx_data = tx_data
+        .length = sendSize * 8,
+        .tx_buffer = tx_data
     };
-    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &t));
+    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &trans));
     free(tx_data);
 }
 
 static void module_strobe(uint8_t addr) {
     uint8_t tx_data[1] = {addr & 63};
     spi_transaction_t trans = {
-        .lenght = 8,
-        .tx_data = tx_data
+        .length = 8,
+        .tx_buffer = tx_data
     };
-    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &t));
+    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &trans));
+}
+
+static uint8_t module_readReg(uint8_t addr) {
+    uint8_t tx_data[2] = { (addr & 63) | READ_BIT, 0 };
+    uint8_t rx_data[2] = { 0 };
+    spi_transaction_t trans = {
+        .length    = 2 * 8,
+        .tx_buffer = tx_data,
+        .rx_buffer = rx_data,
+    };
+    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &trans));
+    return rx_data[1];
+}
+
+static void module_readReg_burst(uint8_t addr, uint8_t* data_out, size_t read_bytes) {
+    size_t length = read_bytes + 1;
+
+    uint8_t* tx_data = malloc(length);
+    if (!tx_data) {
+        ESP_LOGE(TAG, "module_writeReg_burst: failed to alloc tx_data");
+        return;
+    }
+
+    uint8_t* rx_data = malloc(length);
+    if (!rx_data) {
+        free(tx_data);
+        ESP_LOGE(TAG, "module_writeReg_burst: failed to alloc rx_data");
+        return;
+    }
+
+    tx_data[0] = (addr & 63) | READ_BIT | BURST_BIT;
+    memset(tx_data + 1, 0, read_bytes);
+
+    spi_transaction_t trans = {
+        .length    = length * 8,
+        .tx_buffer = tx_data,
+        .rx_buffer = rx_data,
+    };
+    ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &trans));
+
+    memcpy(data_out, rx_data + 1, read_bytes);
+
+    free(tx_data);
+    free(rx_data);
 }
 
 void app_main() {
