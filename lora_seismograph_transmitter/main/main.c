@@ -96,8 +96,9 @@ static void module_strobe(uint8_t addr) {
     ESP_ERROR_CHECK(spi_device_polling_transmit(spi_handle, &trans));
 }
 
-static uint8_t module_readReg(uint8_t addr) {
+static uint8_t module_readReg(uint8_t addr, bool burstFlag) {
     uint8_t tx_data[2] = { (addr & 63) | READ_BIT, 0 };
+    if (burstFlag) tx_data[0] |= BURST_BIT;
     uint8_t rx_data[2] = { 0 };
     spi_transaction_t trans = {
         .length    = 2 * 8,
@@ -140,17 +141,14 @@ static void module_readReg_burst(uint8_t addr, uint8_t* data_out, size_t read_by
     free(rx_data);
 }
 
-static uint8_t module_readReg_burst_byte(uint8_t addr) {
-    uint8_t ret = 0;
-    module_readReg_burst(addr, &ret, 1);
-    return ret;
-}
-
 void app_main() {
     init_module_spi();
     init_module_pins();
 
+    module_strobe(CMD_SRES);
+
     ESP_LOGI(TAG, "TEST MODULE");
-    ESP_LOGI(TAG, "VERSION: 0x%02X", module_readReg_burst_byte(REG_VERSION));
-    ESP_LOGI(TAG, "PARTNUM: 0x%02X", module_readReg_burst_byte(REG_PARTNUM));
+    ESP_LOGI(TAG, "VERSION  : 0x%02X", module_readReg(REG_VERSION, true));
+    ESP_LOGI(TAG, "PARTNUM  : 0x%02X", module_readReg(REG_PARTNUM, true));
+    ESP_LOGI(TAG, "MARCSTATE: 0x%02X", module_readReg(REG_MARCSTATE, true));
 }
