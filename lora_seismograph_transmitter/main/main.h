@@ -1,0 +1,14 @@
+#pragma once
+
+extern const char* TAG;
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <driver/spi_master.h>
+#include <driver/gpio.h>
+#include <esp_log.h>

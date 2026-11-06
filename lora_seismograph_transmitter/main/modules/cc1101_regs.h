@@ -1,3 +1,5 @@
+#pragma once
+
 #define REG_VERSION 0x31
 #define REG_PARTNUM 0x30
 #define REG_MARCSTATE 0x35
