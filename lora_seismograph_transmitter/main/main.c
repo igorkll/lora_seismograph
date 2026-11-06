@@ -22,7 +22,6 @@ void app_main() {
 
             esp_err_t result = module_receive(buff, 4, &len);
             if (result == ESP_OK) {
-                module_waitRecive();
                 printf("%i: %i %i %i %i\n", len, buff[0], buff[1], buff[2], buff[3]);
             } else {
                 printf("recive error: %i\n", result);
