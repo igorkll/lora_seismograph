@@ -7,7 +7,7 @@ void app_main() {
     gpio_install_isr_service(0);
 
     ESP_LOGI(TAG, "initing module...");
-    module_init();
+    ESP_ERROR_CHECK(module_init());
     ESP_LOGI(TAG, "module inited!");
 
     uint8_t data[] = {1, 2, 3, 4};
@@ -28,6 +28,6 @@ void app_main() {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

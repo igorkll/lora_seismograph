@@ -1,6 +1,6 @@
 #pragma once
 
-#define MODULE_FREQ (4 * 1000 * 1000)
+#define MODULE_FREQ (1 * 1000 * 1000)
 
 #define GPIO_MODULE_GDO0  4
 #define GPIO_MODULE_CSN   5

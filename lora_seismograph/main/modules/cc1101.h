@@ -30,6 +30,10 @@ static void init_module_spi() {
 
     ESP_ERROR_CHECK(spi_bus_initialize(SPI, &buscfg, SPI_DMA_CH_AUTO));
 
+    gpio_pullup_en(GPIO_MODULE_MISO);
+    gpio_pullup_en(GPIO_MODULE_MOSI);
+    gpio_pullup_en(GPIO_MODULE_SCK);
+
     // --------------------------------- spi device
     spi_device_interface_config_t devcfg = {
         .clock_speed_hz = MODULE_FREQ,
@@ -39,6 +43,8 @@ static void init_module_spi() {
     };
     
     ESP_ERROR_CHECK(spi_bus_add_device(SPI, &devcfg, &spi_handle));
+
+    gpio_pullup_en(GPIO_MODULE_CSN);
 }
 
 static void init_module_pins() {
@@ -46,7 +52,7 @@ static void init_module_pins() {
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << GPIO_MODULE_GDO0),
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_POSEDGE
     };
@@ -128,10 +134,10 @@ esp_err_t module_send(const uint8_t *data, size_t len, uint32_t timeout_ms)
 
     // ---------- 1. Перейти в IDLE и очистить TX FIFO ----------
     module_strobe(CMD_SIDLE);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     module_strobe(CMD_SFTX);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(10));
 
     // ---------- 2. Загрузить в FIFO: [длина][данные...] ----------
     // В режиме переменной длины первый байт FIFO — это длина пакета.
@@ -172,7 +178,7 @@ esp_err_t module_send(const uint8_t *data, size_t len, uint32_t timeout_ms)
                 return ESP_OK;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     ESP_LOGE(TAG, "module_send: timeout waiting for IDLE");
@@ -232,34 +238,59 @@ esp_err_t module_receive(uint8_t* buffer, size_t max_len, size_t *out_len) {
     return ESP_OK;
 }
 
-void module_init() {
+static void module_test(int num) {
+    ESP_LOGI(TAG, "TEST MODULE %i", num);
+    ESP_LOGI(TAG, "VERSION  : 0x%02X", module_readReg(REG_VERSION, true));
+    ESP_LOGI(TAG, "PARTNUM  : 0x%02X", module_readReg(REG_PARTNUM, true));
+    ESP_LOGI(TAG, "MARCSTATE: 0x%02X", module_readReg(REG_MARCSTATE, true));
+}
+
+esp_err_t module_init() {
     init_module_spi();
     init_module_pins();
 
     module_strobe(CMD_SRES);
+    vTaskDelay(pdMS_TO_TICKS(100));
 
-    vTaskDelay(pdMS_TO_TICKS(10));
-    module_writeReg(0x0D, 0x10); // FREQ2
-    module_writeReg(0x0E, 0xB0); // FREQ1
-    module_writeReg(0x0F, 0x71); // FREQ0 (пример для 433 МГц)
-    module_writeReg(0x14, 0x07); // SYNC_MODE=111 (30/32 sync + CS)
-    module_writeReg(0x08, 0x05); // PKTCTRL0: переменная длина + CRC
-    module_writeReg(0x06, 0xFF); // PKTLEN: макс. длина (для переменной длины)
-    module_writeReg(0x3E, 0x0F); // PATABLE (~10 dBm на 433 МГц)
-    module_writeReg(0x02, 0x07); // GDO0 = Packet received with CRC OK
-    module_writeReg(0x07, 0x0E); // APPEND_STATUS=1 (0x04) + CRC_AUTOFLUSH=1 (0x08) + PQT=2 (0x02)
+    module_test(1);
 
-    module_writeReg(0x12, 0xF5); // MDMCFG4: CHANBW=58 кГц, DRATE_E=5
-    module_writeReg(0x13, 0x83); // MDMCFG3: DRATE_M=131, итоговая скорость ~1.2 кбит/с
+    // 3. GDO0: прерывание только по пакету с корректным CRC
+    module_writeReg(REG_IOCFG0, 0x07);
 
-    // явно ставлю синхрослово
-    module_writeReg(0x04, 0xD3); // SYNC1
-    module_writeReg(0x05, 0x91); // SYNC0
+    // 4. Частота 433.92 МГц
+    module_writeReg(REG_FREQ2, 0x10);
+    module_writeReg(REG_FREQ1, 0xB0);
+    module_writeReg(REG_FREQ0, 0x71);
+
+    // 5. Модуляция, скорость, полоса
+    module_writeReg(REG_MDMCFG4, 0xF5); // BW ≈ 58 кГц
+    module_writeReg(REG_MDMCFG3, 0x83); // ~1.2 кбит/с
+    module_writeReg(REG_MDMCFG2, 0x07); // 2-FSK, sync 30/32
+    module_writeReg(REG_MDMCFG1, 0x22); // 4 байта преамбулы
+    module_writeReg(REG_MDMCFG0, 0xF8);
+    module_writeReg(REG_DEVIATN, 0x15); // девиация должна совпадать с TX
+
+    // 6. Sync word
+    module_writeReg(REG_SYNC1, 0xD3);
+    module_writeReg(REG_SYNC0, 0x91);
+
+    // 7. Формат пакета: переменная длина + CRC
+    // PKTLEN в режиме переменной длины задаёт МАКСИМАЛЬНУЮ длину.
+    // 61 — это безопасный максимум с учётом 2 статусных байт (RSSI, LQI).[reference:0]
+    module_writeReg(REG_PKTLEN,   0x3D); // 61
+    module_writeReg(REG_PKTCTRL1, 0x18); // APPEND_STATUS + CRC_AUTOFLUSH
+    module_writeReg(REG_PKTCTRL0, 0x05); // переменная длина + CRC + FIFO
+
+    // 8. Управление состоянием
+    // MCSM1 = 0x0C: RXOFF_MODE=11 (оставаться в RX), TXOFF_MODE=00 (возврат в IDLE)[reference:2]
+    module_writeReg(REG_MCSM1, 0x0C);
+    // MCSM0 = 0x18: FS_AUTOCAL=01 (калибровка при переходе IDLE→RX/TX)
+    module_writeReg(REG_MCSM0, 0x18);
+
 
     gpio_isr_handler_add(GPIO_MODULE_GDO0, gdo0_isr_handler, NULL);
 
-    ESP_LOGI(TAG, "TEST MODULE");
-    ESP_LOGI(TAG, "VERSION  : 0x%02X", module_readReg(REG_VERSION, true));
-    ESP_LOGI(TAG, "PARTNUM  : 0x%02X", module_readReg(REG_PARTNUM, true));
-    ESP_LOGI(TAG, "MARCSTATE: 0x%02X", module_readReg(REG_MARCSTATE, true));
+    module_test(2);
+
+    return ESP_OK;
 }
