@@ -10,10 +10,17 @@ void app_main() {
     ESP_ERROR_CHECK(module_init());
     ESP_LOGI(TAG, "module inited!");
 
+    module_debug();
+
     uint8_t data[] = {1, 2, 3, 4};
     module_send(data, 4, 5000);
 
+    module_debug();
+
     module_waitRecive();
+    
+    module_debug();
+
     while (true) {
         if (module_isRecived()) {
             printf("recived!\n");
@@ -29,5 +36,7 @@ void app_main() {
         }
 
         vTaskDelay(pdMS_TO_TICKS(1000));
+
+        module_debug();
     }
 }

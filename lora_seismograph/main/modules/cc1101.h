@@ -200,8 +200,6 @@ esp_err_t module_receive(uint8_t* buffer, size_t max_len, size_t *out_len) {
 
     uint8_t n = module_readReg(REG_RXBYTES, true) & 0x7F;
     if (n == 0) {
-        // EOP сработал, но данных нет (коллизия, CRC fail до FIFO)
-        module_strobe(CMD_SRX);
         return ESP_FAIL;
     }
 
@@ -213,7 +211,6 @@ esp_err_t module_receive(uint8_t* buffer, size_t max_len, size_t *out_len) {
         ESP_LOGW(TAG, "module_receive: bad len=%u", pkt_len);
         module_strobe(CMD_SIDLE);
         module_strobe(CMD_SFRX);
-        module_strobe(CMD_SRX);
         return ESP_FAIL;
     }
 
@@ -233,8 +230,6 @@ esp_err_t module_receive(uint8_t* buffer, size_t max_len, size_t *out_len) {
     ESP_LOGI(TAG, "RX %u bytes RSSI=%d LQI=%u CRC=%s",
              pkt_len, rssi, lqi, crc_ok ? "OK" : "FAIL");
 
-    // Вернуться в приём для следующего пакета
-    module_strobe(CMD_SRX);
     return ESP_OK;
 }
 
@@ -243,6 +238,19 @@ static void module_test(int num) {
     ESP_LOGI(TAG, "VERSION  : 0x%02X", module_readReg(REG_VERSION, true));
     ESP_LOGI(TAG, "PARTNUM  : 0x%02X", module_readReg(REG_PARTNUM, true));
     ESP_LOGI(TAG, "MARCSTATE: 0x%02X", module_readReg(REG_MARCSTATE, true));
+}
+
+void module_debug() {
+    uint8_t marc = module_readReg(REG_MARCSTATE, true);
+    uint8_t state = marc & 0x1F;
+
+    if (state == 0x0D) {
+        ESP_LOGI(TAG, "Current state: RX (0x%02X)", state);
+    } else if (state == 0x01) {
+        ESP_LOGI(TAG, "Current state: IDLE (0x%02X)", state);
+    } else {
+        ESP_LOGW(TAG, "Current state: 0x%02X (not RX, not IDLE)", state);
+    }
 }
 
 esp_err_t module_init() {
@@ -278,14 +286,17 @@ esp_err_t module_init() {
     // PKTLEN в режиме переменной длины задаёт МАКСИМАЛЬНУЮ длину.
     // 61 — это безопасный максимум с учётом 2 статусных байт (RSSI, LQI).[reference:0]
     module_writeReg(REG_PKTLEN,   0x3D); // 61
-    module_writeReg(REG_PKTCTRL1, 0x18); // APPEND_STATUS + CRC_AUTOFLUSH
+    module_writeReg(REG_PKTCTRL1, 0x1C); // PQT* + APPEND_STATUS(0x04) + CRC_AUTOFLUSH
     module_writeReg(REG_PKTCTRL0, 0x05); // переменная длина + CRC + FIFO
 
     // 8. Управление состоянием
-    // MCSM1 = 0x0C: RXOFF_MODE=11 (оставаться в RX), TXOFF_MODE=00 (возврат в IDLE)[reference:2]
-    module_writeReg(REG_MCSM1, 0x0C);
+    // MCSM1 = 0x30: если был RX то оставляем RX
+    module_writeReg(REG_MCSM1, 0x30);
     // MCSM0 = 0x18: FS_AUTOCAL=01 (калибровка при переходе IDLE→RX/TX)
     module_writeReg(REG_MCSM0, 0x18);
+
+    // Отключаем тайм-аут приема: чип будет ждать пакет бесконечно
+    module_writeReg(REG_MCSM2, 0x07);
 
 
     gpio_isr_handler_add(GPIO_MODULE_GDO0, gdo0_isr_handler, NULL);

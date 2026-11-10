@@ -1,27 +1,9 @@
+
 #pragma once
 
-
-
-#define REG_VERSION    0x31
-#define REG_PARTNUM    0x30
-#define REG_MARCSTATE  0x35
-
-#define REG_TXBYTES    0x3A // Количество байт в TX FIFO
-#define REG_TXFIFO     0x3F // Адрес TX FIFO
-
-#define REG_RXBYTES    0x3B // Количество байт в RX FIFO
-#define REG_RXFIFO     0x3F // Адрес RX FIFO
-
-
-
-
-#define CMD_SRES   0x30 // Сброс
-#define CMD_SIDLE  0x36 // Переход в режим IDLE
-#define CMD_SFTX   0x3B // Очистка TX FIFO
-#define CMD_STX    0x35 // Запуск передачи
-#define CMD_SRX    0x34 // Переход в режим приёма
-#define CMD_SFRX   0x3A // Очистка RX FIFO
-
+// ============================================================
+// Configuration Registers (0x00 - 0x2E)
+// ============================================================
 
 #define REG_IOCFG2      0x00
 #define REG_IOCFG1      0x01
@@ -45,28 +27,83 @@
 #define REG_MDMCFG1     0x13
 #define REG_MDMCFG0     0x14
 #define REG_DEVIATN     0x15
-#define REG_MCSM1       0x16
-#define REG_MCSM0       0x17
-#define REG_FOCCFG      0x18
-#define REG_BSCFG       0x19
-#define REG_AGCCTRL2    0x1A
-#define REG_AGCCTRL1    0x1B
-#define REG_AGCCTRL0    0x1C
+
+#define REG_MCSM2       0x16
+#define REG_MCSM1       0x17
+#define REG_MCSM0       0x18
+
+#define REG_FOCCFG      0x19
+#define REG_BSCFG       0x1A
+
+#define REG_AGCCTRL2    0x1B
+#define REG_AGCCTRL1    0x1C
+#define REG_AGCCTRL0    0x1D
+
+#define REG_WOREVT1     0x1E
+#define REG_WOREVT0     0x1F
+#define REG_WORCTRL     0x20
+
 #define REG_FREND1      0x21
 #define REG_FREND0      0x22
+
 #define REG_FSCAL3      0x23
 #define REG_FSCAL2      0x24
 #define REG_FSCAL1      0x25
 #define REG_FSCAL0      0x26
+
+#define REG_RCCTRL1     0x27
+#define REG_RCCTRL0     0x28
+
+#define REG_FSTEST      0x29
+#define REG_PTEST       0x2A
+#define REG_AGCTEST     0x2B
+
 #define REG_TEST2       0x2C
 #define REG_TEST1       0x2D
 #define REG_TEST0       0x2E
-#define REG_PATABLE     0x3E
 
-#define CMD_SFSTXON  0x31   // Enable and calibrate frequency synthesizer
-#define CMD_SXOFF    0x32   // Turn off crystal oscillator
-#define CMD_SCAL     0x33   // Calibrate frequency synthesizer and turn it off
-#define CMD_SWOR     0x38   // Start automatic RX polling sequence (WOR)
-#define CMD_SPWD     0x39   // Enter power-down mode
-#define CMD_SWORRST  0x3C   // Reset real-time counter to event0
-#define CMD_SNOP     0x3D   // No operation
+// ============================================================
+// Status Registers (0x30 - 0x3D)
+// Read only
+// ============================================================
+
+#define REG_PARTNUM         0x30
+#define REG_VERSION         0x31
+#define REG_FREQEST         0x32
+#define REG_LQI             0x33
+#define REG_RSSI            0x34
+#define REG_MARCSTATE       0x35
+#define REG_WORTIME1        0x36
+#define REG_WORTIME0        0x37
+#define REG_PKTSTATUS       0x38
+#define REG_VCO_VC_DAC      0x39
+#define REG_TXBYTES         0x3A
+#define REG_RXBYTES         0x3B
+#define REG_RCCTRL1_STATUS  0x3C
+#define REG_RCCTRL0_STATUS  0x3D
+
+// ============================================================
+// Command Strobes
+// ============================================================
+
+#define CMD_SRES       0x30  // Reset
+#define CMD_SFSTXON    0x31  // Enable and calibrate synthesizer
+#define CMD_SXOFF      0x32  // Turn off crystal oscillator
+#define CMD_SCAL       0x33  // Calibrate frequency synthesizer
+#define CMD_SRX        0x34  // Enter RX mode
+#define CMD_STX        0x35  // Enter TX mode
+#define CMD_SIDLE      0x36  // Enter IDLE mode
+#define CMD_SWOR       0x38  // Start Wake-on-Radio
+#define CMD_SPWD       0x39  // Enter power-down mode
+#define CMD_SFRX       0x3A  // Flush RX FIFO
+#define CMD_SFTX       0x3B  // Flush TX FIFO
+#define CMD_SWORRST    0x3C  // Reset WOR timer
+#define CMD_SNOP       0x3D  // No operation
+
+// ============================================================
+// Special Registers
+// ============================================================
+
+#define REG_PATABLE    0x3E  // Power Amplifier Table
+#define REG_TXFIFO     0x3F  // TX FIFO (write)
+#define REG_RXFIFO     0x3F  // RX FIFO (read)
