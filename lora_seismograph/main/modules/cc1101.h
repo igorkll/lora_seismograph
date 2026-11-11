@@ -286,7 +286,7 @@ esp_err_t module_init() {
     // PKTLEN в режиме переменной длины задаёт МАКСИМАЛЬНУЮ длину.
     // 61 — это безопасный максимум с учётом 2 статусных байт (RSSI, LQI).[reference:0]
     module_writeReg(REG_PKTLEN,   0x3D); // 61
-    module_writeReg(REG_PKTCTRL1, 0x18); // PQT* + APPEND_STATUS(0x04) + CRC_AUTOFLUSH
+    module_writeReg(REG_PKTCTRL1, 0x0C);
     module_writeReg(REG_PKTCTRL0, 0x05); // переменная длина + CRC + FIFO
 
     // 8. Управление состоянием
