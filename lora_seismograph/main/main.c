@@ -39,6 +39,8 @@ static void signal_recived() {
 }
 
 static void reciver() {
+    ESP_LOGI(TAG, "reciver: started");
+
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << BUZZER_GPIO) || (1ULL << LED_GPIO),
         .mode = GPIO_MODE_OUTPUT,
@@ -82,6 +84,8 @@ static void IRAM_ATTR trigger_isr_handler(void *arg) {
 }
 
 static void transmitter() {
+    ESP_LOGI(TAG, "transmitter: started");
+
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << TRIGGER_GPIO),
         .mode = GPIO_MODE_INPUT,
