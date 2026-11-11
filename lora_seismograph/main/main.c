@@ -1,7 +1,106 @@
 #include "main.h"
 #include "modules/anymodule.h"
 
-const char* TAG = "lora_seismograph";
+static const char* TAG = "lora_seismograph";
+
+static const uint8_t trigger_signal[] = {42, 55, 11, 98, 27, 44, 17, 100};
+static const uint8_t trigger_signal_len = 8;
+
+static const uint8_t accept_signal[] = {7, 133, 64, 2, 201, 88, 150, 39};
+static const uint8_t accept_signal_len = 8;
+
+static time_t get_time() {
+    return esp_timer_get_time() / 1000;
+}
+
+// ------------------------------ reciver
+
+static void signal_recived() {
+    
+}
+
+static void reciver() {
+    module_waitRecive();
+    while (true) {
+        if (module_isRecived()) {
+            uint8_t buff[trigger_signal_len] = {};
+            size_t  len;
+
+            esp_err_t result = module_receive(buff, trigger_signal_len, &len);
+            if (result == ESP_OK) {
+                if (len == trigger_signal_len && memcmp(trigger_signal, buff, trigger_signal_len) == 0) {
+                    signal_recived();
+
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    ESP_ERROR_CHECK(module_send(accept_signal, accept_signal_len));
+
+                    vTaskDelay(pdMS_TO_TICKS(100));
+                    module_waitRecive();
+                }
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+// ------------------------------ transmitter
+
+static volatile bool triggered = false;
+static bool waitAccept = false;
+static time_t waitAcceptTime = 0;
+
+static void IRAM_ATTR trigger_isr_handler(void *arg) {
+    triggered = true;
+}
+
+static void transmitter() {
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << TRIGGER_GPIO),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_POSEDGE
+    };
+    gpio_config(&io_conf);
+    gpio_isr_handler_add(TRIGGER_GPIO, trigger_isr_handler, NULL);
+
+    while (true) {
+        time_t ctime = get_time();
+
+        if (triggered || (waitAccept && (ctime - waitAcceptTime > AUTO_RESEND_TIME))) {
+            triggered = false;
+
+            ESP_LOGI(TAG, "transmitter: send trigger signal");
+            vTaskDelay(pdMS_TO_TICKS(100));
+            ESP_ERROR_CHECK(module_send(trigger_signal, trigger_signal_len));
+            vTaskDelay(pdMS_TO_TICKS(100));
+            module_waitRecive();
+            
+            waitAccept = true;
+            waitAcceptTime = ctime;
+        }
+
+        if (waitAccept) {
+            ESP_LOGI(TAG, "transmitter: wait accept");
+
+            if (module_isRecived()) {
+                uint8_t buff[accept_signal_len] = {};
+                size_t  len;
+
+                esp_err_t result = module_receive(buff, accept_signal_len, &len);
+                if (result == ESP_OK) {
+                    if (len == accept_signal_len && memcmp(accept_signal, buff, accept_signal_len) == 0) {
+                        waitAccept = false;
+                        module_idle();
+                    }
+                }
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
 
 void app_main() {
     gpio_install_isr_service(0);
@@ -9,37 +108,12 @@ void app_main() {
     ESP_LOGI(TAG, "initing module...");
     ESP_ERROR_CHECK(module_init());
     ESP_LOGI(TAG, "module inited!");
-
     module_debug();
 
-    uint8_t data[] = {1, 2, 3, 4};
-    module_send(data, 4, 5000);
-
-    module_debug();
-
-    module_waitRecive();
-    
-    module_debug();
-
-    while (true) {
-        if (module_isRecived()) {
-            printf("recived!\n");
-            uint8_t buff[4] = {};
-            size_t  len;
-
-            esp_err_t result = module_receive(buff, 4, &len);
-            if (result == ESP_OK) {
-                printf("%i: %i %i %i %i\n", len, buff[0], buff[1], buff[2], buff[3]);
-            } else {
-                printf("recive error: %i\n", result);
-            }
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(1000));
-
-        module_send(data, 4, 5000);
-        data[2]++;
-
-        module_debug();
+    if (IS_TRANSMITTER) {
+        transmitter();
+    } else {
+        reciver();
     }
 }
+

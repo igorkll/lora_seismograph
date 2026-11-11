@@ -2,6 +2,8 @@
 #include "cc1101_config.h"
 #include "cc1101_regs.h"
 
+static const char* TAG = "cc1101";
+
 #define MAX_TRANS_SZ 65
 #define MAX_PAYLOAD 63
 #define SPI SPI2_HOST
@@ -12,6 +14,7 @@ static spi_device_handle_t spi_handle;
 #define READ_BIT (1 << 7)
 
 static volatile bool recived = false;
+static uint32_t timeout_ms = 5000;
 
 static void IRAM_ATTR gdo0_isr_handler(void *arg) {
     recived = true;
@@ -125,7 +128,7 @@ static void module_readReg_burst(uint8_t addr, uint8_t* data_out, size_t read_by
     memcpy(data_out, rx_data + 1, read_bytes);
 }
 
-esp_err_t module_send(const uint8_t *data, size_t len, uint32_t timeout_ms)
+esp_err_t module_send(const uint8_t *data, size_t len)
 {
     if (!data || len == 0 || len > MAX_PAYLOAD) {
         ESP_LOGE(TAG, "module_send: invalid len=%zu", len);
@@ -233,6 +236,12 @@ esp_err_t module_receive(uint8_t* buffer, size_t max_len, size_t *out_len) {
     return ESP_OK;
 }
 
+esp_err_t module_idle() {
+    module_strobe(CMD_SIDLE);
+
+    return ESP_OK;
+}
+
 static void module_test(int num) {
     ESP_LOGI(TAG, "TEST MODULE %i", num);
     ESP_LOGI(TAG, "VERSION  : 0x%02X", module_readReg(REG_VERSION, true));
@@ -269,6 +278,11 @@ esp_err_t module_init() {
     module_writeReg(REG_FREQ2, 0x10);
     module_writeReg(REG_FREQ1, 0xB0);
     module_writeReg(REG_FREQ0, 0x71);
+
+    // 4. Тест 868,3 МГц
+    //module_writeReg(REG_FREQ2, 0x21);
+    //module_writeReg(REG_FREQ1, 0x65);
+    //module_writeReg(REG_FREQ0, 0x6A);
 
     // 5. Модуляция, скорость, полоса
     module_writeReg(REG_MDMCFG4, 0xF5); // BW ≈ 58 кГц
