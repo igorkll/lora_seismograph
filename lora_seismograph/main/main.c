@@ -96,6 +96,9 @@ static void transmitter() {
         time_t ctime = get_time();
 
         if (triggered || (waitAccept && (ctime - waitAcceptTime > AUTO_RESEND_TIME))) {
+            if (triggered) {
+                ESP_LOGI(TAG, "transmitter: triggered");
+            }
             triggered = false;
 
             ESP_LOGI(TAG, "transmitter: send trigger signal");
@@ -118,6 +121,7 @@ static void transmitter() {
                 esp_err_t result = module_receive(buff, accept_signal_len, &len);
                 if (result == ESP_OK) {
                     if (len == accept_signal_len && memcmp(accept_signal, buff, accept_signal_len) == 0) {
+                        ESP_LOGI(TAG, "transmitter: accepted");
                         waitAccept = false;
                         module_idle();
                     }
