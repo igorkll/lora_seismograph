@@ -15,11 +15,38 @@ static time_t get_time() {
 
 // ------------------------------ reciver
 
-static void signal_recived() {
+void signal_recived_task(void* ptr) {
+    for (size_t index = 0; index < 5; index++) {
+        gpio_set_level(BUZZER_GPIO, 1);
+        gpio_set_level(LED_GPIO, 0);
+        vTaskDelay(pdMS_TO_TICKS(500));
+
+        gpio_set_level(BUZZER_GPIO, 0);
+        gpio_set_level(LED_GPIO, 1);
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+
+    gpio_set_level(BUZZER_GPIO, 0);
+    gpio_set_level(LED_GPIO, 0);
     
+    vTaskDelete(NULL);
+}
+
+static void signal_recived() {
+    ESP_LOGI(TAG, "reciver: signal recived");
+
+    xTaskCreate(signal_recived_task, NULL, TASKS_STACK_SIZE, NULL, 8, NULL);
 }
 
 static void reciver() {
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << BUZZER_GPIO) || (1ULL << LED_GPIO),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLDOWN_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE
+    };
+    gpio_config(&io_conf);
+
     module_waitRecive();
     while (true) {
         if (module_isRecived()) {

@@ -1,5 +1,7 @@
 #pragma once
 
+#define TASKS_STACK_SIZE (1024 * 8)
+
 #define MODULE_DRIVER "cc1101.h"
 #define IS_TRANSMITTER true
 
@@ -8,5 +10,5 @@
 #define AUTO_RESEND_TIME 1000
 
 // ----------- RECIVER
-#define SPEAKER_GPIO 0
+#define BUZZER_GPIO 0
 #define LED_GPIO 1
