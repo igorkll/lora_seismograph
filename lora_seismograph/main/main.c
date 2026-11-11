@@ -37,6 +37,9 @@ void app_main() {
 
         vTaskDelay(pdMS_TO_TICKS(1000));
 
+        module_send(data, 4, 5000);
+        data[2]++;
+
         module_debug();
     }
 }
