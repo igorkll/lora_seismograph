@@ -15,25 +15,31 @@ static time_t get_time() {
 
 // ------------------------------ reciver
 
-void signal_recived_task(void* ptr) {
-    for (size_t index = 0; index < 5; index++) {
+static bool recived_flag = false;
+
+static void signal_recived_task(void* ptr) {
+    for (size_t index = 0; index < 25; index++) {
         gpio_set_level(BUZZER_GPIO, 1);
         gpio_set_level(LED_GPIO, 0);
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(100));
 
         gpio_set_level(BUZZER_GPIO, 0);
         gpio_set_level(LED_GPIO, 1);
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     gpio_set_level(BUZZER_GPIO, 0);
     gpio_set_level(LED_GPIO, 0);
     
+    recived_flag = false;
     vTaskDelete(NULL);
 }
 
 static void signal_recived() {
     ESP_LOGI(TAG, "reciver: signal recived");
+
+    if (recived_flag) return;
+    recived_flag = true;
 
     xTaskCreate(signal_recived_task, NULL, TASKS_STACK_SIZE, NULL, 8, NULL);
 }
@@ -42,7 +48,7 @@ static void reciver() {
     ESP_LOGI(TAG, "reciver: started");
 
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << BUZZER_GPIO) || (1ULL << LED_GPIO),
+        .pin_bit_mask = (1ULL << BUZZER_GPIO) | (1ULL << LED_GPIO),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLDOWN_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE
@@ -91,7 +97,7 @@ static void transmitter() {
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_POSEDGE
+        .intr_type = HIGH_LEVEL_TRIGGER ? GPIO_INTR_POSEDGE : GPIO_INTR_NEGEDGE
     };
     gpio_config(&io_conf);
     gpio_isr_handler_add(TRIGGER_GPIO, trigger_isr_handler, NULL);
