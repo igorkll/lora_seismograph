@@ -7,7 +7,6 @@
 
 // ----------- TRANSMITTER
 #define TRIGGER_GPIO 0
-#define HIGH_LEVEL_TRIGGER true
 #define AUTO_RESEND_TIME 1000
 
 // ----------- RECIVER

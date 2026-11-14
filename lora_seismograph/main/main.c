@@ -97,7 +97,7 @@ static void transmitter() {
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = HIGH_LEVEL_TRIGGER ? GPIO_INTR_POSEDGE : GPIO_INTR_NEGEDGE
+        .intr_type = GPIO_INTR_ANYEDGE
     };
     gpio_config(&io_conf);
     gpio_isr_handler_add(TRIGGER_GPIO, trigger_isr_handler, NULL);
